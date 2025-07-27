@@ -235,6 +235,10 @@ resource "aws_ecs_task_definition" "task_definition_openwebui" {
         {
           name  = "OPENAI_API_BASE_URL"
           value = "http://gateway.bedrock.local/api/v1"
+        },
+        {
+          name  = "WEBUI_NAME"
+          value = "Ask Labs"
         }
       ]
       secrets = [
