@@ -7,6 +7,9 @@ terraform/.terraform.tfstate.lock.info
 terraform/*.tfstate
 terraform/*.tfstate.*
 terraform/.terraform.tfstate.lock.info
+terraform/terraform.tfstate.lock.info
+terraform/terraform.tfstate
+terraform/terraform.tfstate.backup
 
 # Terraform provider files (these are downloaded automatically)
 terraform/.terraform/providers/
