@@ -4,8 +4,12 @@ locals {
     service_name_webui                  = "openwebui"
     service_name_bedrock_access_gateway = "bedrock-access-gateway"
     service_name_mcpo                   = "mcpo"
+    service_name_ollama                 = "ollama"
   }
 }
+
+# Data sources
+data "aws_region" "current" {}
 
 # ECS Cluster
 # resource "aws_iam_service_linked_role" "AWSServiceRoleForECS" {
@@ -219,6 +223,9 @@ resource "aws_ecs_task_definition" "task_definition_openwebui" {
   execution_role_arn       = module.task_execution_role.arn
   task_role_arn            = module.task_execution_role.arn
 
+  # Add dependency on the image build to ensure task definition updates when image changes
+  depends_on = [null_resource.build_webui_image, null_resource.build_ollama_image]
+
   container_definitions = jsonencode([
     {
       name      = "openwebui"
@@ -233,26 +240,86 @@ resource "aws_ecs_task_definition" "task_definition_openwebui" {
       ]
       environment = [
         {
+          name  = "ENV"
+          value = "prod"
+        },
+        {
+          name  = "PORT"
+          value = "8080"
+        },
+
+        {
+          name  = "WEBUI_NAME"
+          value = "Ask Labs"
+        },
+        {
+          name  = "WEBUI_AUTH"
+          value = "True"
+        },
+        {
+          name  = "ENABLE_SIGNUP"
+          value = "True"
+        },
+        {
+          name  = "DEFAULT_USER_ROLE"
+          value = "user"
+        },
+        {
+          name  = "DEFAULT_MODELS"
+          value = "anthropic.claude-sonnet-4-20250514-v1:0,anthropic.claude-sonnet-4-20250514-v1:0 ,meta.llama4-maverick-17b-instruct-v1:0,meta.llama4-scout-17b-instruct-v1:0,mistral.mistral-7b-instruct-v0.2:0,mistral.mixtral-8x7b-instruct-v0.1:0,amazon.titan-text-express-v1,amazon.titan-text-lite-v1,amazon.titan-text-agile-v1,amazon.titan-embed-text-v1"
+        },
+        {
+          name  = "ENABLE_OPENAI_API"
+          value = "True"
+        },
+        {
           name  = "OPENAI_API_BASE_URL"
           value = "http://gateway.bedrock.local/api/v1"
         },
         {
-          name  = "WEBUI_NAME"
-          value = "Ask Labs"
+          name  = "OPENAI_API_KEY"
+          value = "bedrock"
+        },
+        {
+          name  = "OPENAI_API_BASE_URLS"
+          value = "http://gateway.bedrock.local/api/v1"
+        },
+        {
+          name  = "OPENAI_API_KEYS"
+          value = "bedrock"
+        },
+        {
+          name  = "ENABLE_BASE_MODELS_CACHE"
+          value = "True"
+        },
+        {
+          name  = "OPENAI_API_CONFIGS"
+          value = "{\"0\":{\"api_base_url\":\"http://gateway.bedrock.local/api/v1\",\"api_key\":\"bedrock\",\"model_ids\":[\"anthropic.claude-sonnet-4-20250514-v1:0\",\"anthropic.claude-sonnet-4-20250514-v1:0\",\"meta.llama4-maverick-17b-instruct-v1:0\",\"meta.llama4-scout-17b-instruct-v1:0\",\"mistral.mistral-7b-instruct-v0.2:0\",\"mistral.mixtral-8x7b-instruct-v0.1:0\",\"amazon.titan-text-express-v1\",\"amazon.titan-text-lite-v1\",\"amazon.titan-text-agile-v1\",\"amazon.titan-embed-text-v1\"],\"enable\":true}}"
+        },
+        {
+          name  = "ENABLE_OLLAMA_API"
+          value = "True"
+        },
+        {
+          name  = "OLLAMA_BASE_URLS"
+          value = "http://ollama.bedrock.local:11434"
+        },
+        {
+          name  = "OLLAMA_API_CONFIGS"
+          value = "{\"0\":{\"base_url\":\"http://ollama.bedrock.local:11434\",\"enable\":true}}"
         }
       ]
       secrets = [
         {
-          name      = "OPENAI_API_KEY"
-          valueFrom = aws_secretsmanager_secret.bag_api_key_secret.arn
+          name      = "WEBUI_SECRET_KEY"
+          valueFrom = aws_secretsmanager_secret.webui_secret_key.arn
         }
       ]
       logConfiguration = {
-        logDriver = "awslogs",
+        logDriver = "awslogs"
         options = {
-          awslogs-group         = "/ecs/${local.ecs.cluster_name}/openwebui"
-          awslogs-region        = var.region
-          awslogs-create-group  = "true"
+          awslogs-group         = aws_cloudwatch_log_group.webui_log_group.name
+          awslogs-region        = data.aws_region.current.name
           awslogs-stream-prefix = "ecs"
         }
       }
@@ -290,6 +357,11 @@ resource "aws_ecs_service" "ecs_service_openwebui" {
   launch_type            = "FARGATE"
   force_new_deployment   = true
   enable_execute_command = true
+
+  # Add trigger to force deployment when task definition changes
+  triggers = {
+    task_definition = aws_ecs_task_definition.task_definition_openwebui.arn
+  }
 
   network_configuration {
     subnets          = aws_subnet.webui_private_subnets[*].id
@@ -522,6 +594,123 @@ resource "aws_ecs_service" "ecs_service_mcpo" {
   }
 }
 
+# Ollama Security Group
+module "ecs_service_ollama_sg" {
+  source = "./modules/security_group"
+
+  name   = "ecs-service-ollama-sg"
+  vpc_id = aws_vpc.default.id
+
+  cidr_egresses = [{
+    cidr_blocks = ["0.0.0.0/0"]
+    port        = 0
+    protocol    = "-1"
+  }]
+
+  cidr_ingresses = [
+    {
+      cidr_blocks = [local.vpc_cidr]
+      port        = 11434
+      protocol    = "tcp"
+    }
+  ]
+}
+
+# Ollama ECS Task Definition
+resource "aws_ecs_task_definition" "task_definition_ollama" {
+  family                   = local.ecs.service_name_ollama
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  memory                   = 65536  # 64GB for large models like deepseek-r1:32b
+  cpu                      = 16384  # 16 vCPU for better performance
+  execution_role_arn       = module.task_execution_role.arn
+  task_role_arn            = module.task_execution_role.arn
+
+  runtime_platform {
+    cpu_architecture        = "ARM64"
+    operating_system_family = "LINUX"
+  }
+
+  container_definitions = jsonencode([
+    {
+      name      = "ollama"
+      image     = "${aws_ecr_repository.ollama_repository.repository_url}:latest"
+      essential = true
+      portMappings = [
+        {
+          containerPort = 11434
+          hostPort      = 11434
+          protocol      = "tcp"
+        }
+      ]
+      environment = [
+        {
+          name  = "OLLAMA_HOST"
+          value = "0.0.0.0"
+        },
+        {
+          name  = "OLLAMA_ORIGINS"
+          value = "*"
+        }
+      ]
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = "/ecs/${local.ecs.cluster_name}"
+          awslogs-region        = var.region
+          awslogs-create-group  = "true"
+          awslogs-stream-prefix = "ecs"
+        }
+      }
+      mountPoints = [
+        {
+          sourceVolume  = "ollama-efs-volume"
+          containerPath = "/root/.ollama"
+          readOnly      = false
+        }
+      ]
+    }
+  ])
+
+  volume {
+    name = "ollama-efs-volume"
+
+    efs_volume_configuration {
+      file_system_id     = aws_efs_file_system.efs_filesystem.id
+      root_directory     = "/ollama"
+      transit_encryption = "ENABLED"
+    }
+  }
+}
+
+# Ollama ECS Service
+resource "aws_ecs_service" "ecs_service_ollama" {
+  name            = local.ecs.service_name_ollama
+  cluster         = aws_ecs_cluster.ecs_cluster.id
+  task_definition = aws_ecs_task_definition.task_definition_ollama.arn
+
+  desired_count        = 1
+  launch_type          = "FARGATE"
+  force_new_deployment = true
+  enable_execute_command = true
+
+  network_configuration {
+    subnets          = aws_subnet.module_private_subnets[*].id
+    security_groups  = [module.ecs_service_ollama_sg.id]
+    assign_public_ip = false
+  }
+
+  service_registries {
+    registry_arn = aws_service_discovery_service.sd_discovery_service_ollama.arn
+  }
+}
+
+# CloudWatch Log Group for OpenWebUI
+resource "aws_cloudwatch_log_group" "webui_log_group" {
+  name              = "/ecs/${local.ecs.service_name_webui}"
+  retention_in_days = 7
+}
+
 # Service Discovery for Bedrock Access Gateway
 resource "aws_service_discovery_private_dns_namespace" "sd_dns_namespace" {
   name = "bedrock-chatbot.local"
@@ -549,6 +738,26 @@ resource "aws_service_discovery_service" "sd_discovery_service_bag" {
 
 resource "aws_service_discovery_service" "sd_discovery_service_mcpo" {
   name = "mcpo"
+
+  dns_config {
+    namespace_id = aws_service_discovery_private_dns_namespace.sd_dns_namespace.id
+
+    dns_records {
+      ttl  = 10
+      type = "A"
+    }
+
+    routing_policy = "MULTIVALUE"
+  }
+
+  health_check_custom_config {
+    failure_threshold = 1
+  }
+}
+
+# Service Discovery for Ollama
+resource "aws_service_discovery_service" "sd_discovery_service_ollama" {
+  name = "ollama"
 
   dns_config {
     namespace_id = aws_service_discovery_private_dns_namespace.sd_dns_namespace.id

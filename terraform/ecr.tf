@@ -2,6 +2,7 @@ locals {
   bag_working_dir       = "assets/bedrock-access-gateway/src"
   openwebui_working_dir = "assets/open-webui"
   mcpo_working_dir      = "assets/mcpo"
+  ollama_working_dir    = "assets/ollama"
 }
 
 # ECR Repositories
@@ -19,6 +20,12 @@ resource "aws_ecr_repository" "openwebui_repository" {
 
 resource "aws_ecr_repository" "mcpo_repository" {
   name                 = "mcpo"
+  image_tag_mutability = "MUTABLE"
+  force_delete         = true
+}
+
+resource "aws_ecr_repository" "ollama_repository" {
+  name                 = "ollama"
   image_tag_mutability = "MUTABLE"
   force_delete         = true
 }
@@ -80,4 +87,23 @@ resource "null_resource" "build_mcpo_image" {
   }
 
   depends_on = [aws_ecr_repository.mcpo_repository]
+}
+
+resource "null_resource" "build_ollama_image" {
+  triggers = {
+    dir_sha1 = sha1(join("", [for f in fileset(local.ollama_working_dir, "**") : filesha1("${local.ollama_working_dir}/${f}")]))
+  }
+
+  provisioner "local-exec" {
+    working_dir = local.ollama_working_dir
+    command     = <<EOF
+        aws ecr get-login-password --region ${var.region} --profile ${var.profile} | docker login --username AWS --password-stdin ${var.account_id}.dkr.ecr.${var.region}.amazonaws.com
+        docker build \
+        -t ${aws_ecr_repository.ollama_repository.repository_url}:latest \
+        --platform=linux/arm64 . \
+        && docker push ${aws_ecr_repository.ollama_repository.repository_url}:latest
+    EOF
+  }
+
+  depends_on = [aws_ecr_repository.ollama_repository]
 }

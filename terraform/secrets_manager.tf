@@ -28,6 +28,21 @@ resource "aws_secretsmanager_secret_version" "mcpo_api_key_secret_version" {
   secret_string = random_password.mcpo_api_key.result
 }
 
+# WebUI Secret Key
+resource "aws_secretsmanager_secret" "webui_secret_key" {
+  name = "webui-secret-key"
+}
+
+resource "aws_secretsmanager_secret_version" "webui_secret_key_version" {
+  secret_id     = aws_secretsmanager_secret.webui_secret_key.id
+  secret_string = random_password.webui_secret_key.result
+}
+
+resource "random_password" "webui_secret_key" {
+  length  = 32
+  special = true
+}
+
 # Other secrets
 resource "aws_secretsmanager_secret" "gitlab_token_secret" {
   name_prefix = "gitlab-token-"

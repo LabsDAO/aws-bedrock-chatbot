@@ -1,6 +1,6 @@
-# 🧠 AskLabs.ai — AWS Bedrock Chatbot
+# 🧠 AskLabs.ai — AWS Bedrock + Ollama Chatbot
 
-Deploy your own self-hosted ChatGPT-like interface powered by **Amazon Bedrock**, using **Open WebUI** and **Bedrock Access Gateway**, fully containerized and deployed with **Terraform** on **AWS ECS** with custom domain support.
+Deploy your own self-hosted ChatGPT-like interface powered by **Amazon Bedrock** and **Ollama local models**, using **Open WebUI** and **Bedrock Access Gateway**, fully containerized and deployed with **Terraform** on **AWS ECS** with custom domain support.
 
 ## 🚀 What is AskLabs.ai?
 
@@ -9,6 +9,7 @@ AskLabs.ai is a production-ready generative AI chatbot platform powered by AWS B
 You'll get:
 
 - 🧱 **Amazon Bedrock** access (Claude, Titan, etc.)
+- 🤖 **Ollama local models** (llama2, codellama, mistral, etc.)
 - 💬 **Open WebUI** for a ChatGPT-style interface
 - 🔁 **Bedrock Access Gateway (BAG)** for OpenAI-compatible API access
 - 🌐 **Custom Domain Support** (asklabs.ai)
@@ -29,21 +30,46 @@ You'll get:
 
 ## 🧪 Quick Start
 
-### Option 1: Standard Deployment
+### Option 1: Standard Deployment (Bedrock Only)
 ```bash
 git clone https://github.com/LabsDAO/aws-bedrock-chatbot.git
 cd aws-bedrock-chatbot
 ./deploy.sh
 ```
 
-### Option 2: Custom Domain Deployment (Recommended)
+### Option 2: Custom Domain Deployment (Bedrock Only)
 ```bash
 git clone https://github.com/LabsDAO/aws-bedrock-chatbot.git
 cd aws-bedrock-chatbot
 ./deploy-custom-domain.sh
 ```
 
-Once the script is done, you'll get a DNS output. Open it in your browser, register an account, and start chatting with Bedrock LLMs!
+### Option 3: Full Deployment with Ollama (Recommended)
+```bash
+git clone https://github.com/LabsDAO/aws-bedrock-chatbot.git
+cd aws-bedrock-chatbot
+./deploy-with-ollama.sh
+```
+
+Once the script is done, you'll get a DNS output. Open it in your browser, register an account, and start chatting with both Bedrock and local Ollama models!
+
+### Managing Ollama Models
+
+After deployment, you can manage your Ollama models using the provided script:
+
+```bash
+# List available models
+./manage-ollama-models.sh list
+
+# Pull a model
+./manage-ollama-models.sh pull llama2
+
+# Show model information
+./manage-ollama-models.sh show llama2
+
+# Get service status
+./manage-ollama-models.sh status
+```
 
 ## 🌐 Custom Domain Setup
 
@@ -81,9 +107,16 @@ ns-70.awsdns-08.com
 ## 🎯 Use Cases
 
 - **LabsDAO Internal Tools**: AI-powered assistance for development teams
-- **Research & Development**: Testing and prototyping with various LLM models
+- **Research & Development**: Testing and prototyping with various LLM models (both cloud and local)
 - **Custom AI Applications**: Building on top of the Bedrock Access Gateway API
 - **Educational Platform**: Learning and experimenting with generative AI
+- **Local Model Development**: Testing and fine-tuning local models with production infrastructure
+- **Hybrid AI Solutions**: Combining cloud and local models for optimal performance and cost
+
+## 📚 Additional Documentation
+
+- **[Ollama Integration Guide](./OLLAMA_INTEGRATION.md)**: Comprehensive guide for Ollama setup and usage
+- **[Model Management](./manage-ollama-models.sh)**: Script for managing Ollama models
 
 ## 📄 License
 MIT — feel free to fork and build upon it!
